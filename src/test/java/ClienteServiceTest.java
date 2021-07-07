@@ -10,6 +10,8 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import java.io.IOException;
+
 @RunWith(MockitoJUnitRunner.class)
 public class ClienteServiceTest {
 
@@ -23,7 +25,7 @@ public class ClienteServiceTest {
 
 
   @Test
-  public void should_insert_a_client_succesfully(){
+  public void should_insert_a_client_succesfully() throws IOException {
       Cliente cliente = new Cliente();
       cliente.setCpf("27091914074");
       cliente.setNome("Nome de teste");
