@@ -2,6 +2,7 @@ package br.com.letscode;
 
 import br.com.letscode.dominio.Cliente;
 import br.com.letscode.dominio.CustomMessage;
+import br.com.letscode.excecoes.UsuarioJaExisteException;
 import br.com.letscode.service.ClienteService;
 import com.google.gson.Gson;
 import jakarta.inject.Inject;
@@ -16,10 +17,7 @@ import jakarta.servlet.http.HttpSession;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @WebServlet(name = "clienteServlet" , urlPatterns = "/cliente")
 public class ClienteServlet extends HttpServlet {
@@ -28,20 +26,20 @@ public class ClienteServlet extends HttpServlet {
     @Inject
     private ClienteService clienteService;
 
+    private Gson gson;
+
+    @Override
+    public void init() throws ServletException {
+        super.init();
+        gson = new Gson();
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        BufferedReader br = request.getReader();
-        String line="";
-        StringBuilder conteudo = new StringBuilder();
-        Gson gson = new Gson();
-        while(null!= (line= br.readLine())){
-            conteudo.append(line);
-        }
+        StringBuilder conteudo = getBody(request);
         Cliente clienteRequest = gson.fromJson(conteudo.toString(), Cliente.class);
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        PrintWriter print = response.getWriter();
+        PrintWriter print = prepareResponse(response);
         String resposta = "";
         if(null==clienteRequest.getNome() || null==clienteRequest.getCpf()){
             CustomMessage message = new CustomMessage(HttpServletResponse.SC_BAD_REQUEST, "Invalid Parameters");
@@ -49,35 +47,57 @@ public class ClienteServlet extends HttpServlet {
             resposta= gson.toJson(message);
         }else{
 
+            try {
+                HttpSession sessao = request.getSession(true);
 
-            HttpSession sessao = request.getSession(true);
-            List<Cliente> clientes;
-            if(null== (clientes= (List<Cliente>) sessao.getAttribute(CLIENTES_SESSION))){
-                clientes = new ArrayList<>();
+                clienteService.inserir(clienteRequest);
+
+                List<Cliente> clientes = clienteService.listAll();
+
+
+                sessao.setAttribute(CLIENTES_SESSION, clientes);
+
+                resposta = gson.toJson(clientes);
+            }catch (UsuarioJaExisteException usuarioJaExisteException){
+                response.setStatus(400);
+                resposta = gson.toJson(new CustomMessage(400,usuarioJaExisteException.getMessage()));
             }
-            clienteService.inserir(clienteRequest);
-            clientes.add(clienteRequest);
-            sessao.setAttribute(CLIENTES_SESSION, clientes);
-
-            resposta= gson.toJson(clientes);
-
-
-
         }
         print.write(resposta);
         print.close();
 
     }
 
+    private PrintWriter prepareResponse(HttpServletResponse response) throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        PrintWriter print = response.getWriter();
+        return print;
+    }
+
+    private StringBuilder getBody(HttpServletRequest request) throws IOException {
+        BufferedReader br = request.getReader();
+        String line="";
+        StringBuilder conteudo = new StringBuilder();
+
+        while(null!= (line= br.readLine())){
+            conteudo.append(line);
+        }
+        return conteudo;
+    }
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         final String cpfPesquisa =  request.getParameter("cpf");
         HttpSession sessao = request.getSession();
-        List<Cliente> clientes = (List<Cliente>) sessao.getAttribute(CLIENTES_SESSION);
-        Gson gson = new Gson();
-        PrintWriter printWriter = response.getWriter();
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+        List<Cliente> clientes = new ArrayList<>();
+        if(Objects.nonNull(sessao.getAttribute(CLIENTES_SESSION))){
+            clientes.addAll((List<Cliente>) sessao.getAttribute(CLIENTES_SESSION));
+        }else{
+            clientes.addAll(clienteService.listAll());
+        }
+
+        PrintWriter printWriter =prepareResponse(response);
         if(null!=cpfPesquisa && Objects.nonNull(clientes)){
             Optional<Cliente> optionalCliente = clientes.stream().filter(cliente -> cliente.getCpf().equals(cpfPesquisa)).findFirst();
             if(optionalCliente.isPresent()){
@@ -96,5 +116,47 @@ public class ClienteServlet extends HttpServlet {
         }
 
         printWriter.close();
+    }
+
+    @Override
+    protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        StringBuilder conteudo = getBody(request);
+        String identificador = request.getParameter("identificador");
+
+        PrintWriter printWriter = prepareResponse(response);
+        String resposta= "";
+        if(Objects.isNull(identificador)){
+            resposta = erroMessage(response);
+        }else{
+            Cliente cliente = gson.fromJson(conteudo.toString(),Cliente.class);
+            resposta = gson.toJson(clienteService.alterar(cliente, identificador));
+            request.getSession().setAttribute(CLIENTES_SESSION,clienteService.listAll());
+        }
+
+        printWriter.write(resposta);
+        printWriter.close();
+    }
+
+    @Override
+    protected void doDelete(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String identificador = request.getParameter("identificador");
+        PrintWriter printWriter = prepareResponse(response);
+        String resposta;
+        if(Objects.isNull(identificador)){
+            resposta = erroMessage(response);
+        }else {
+
+            clienteService.remove(identificador);
+            resposta = gson.toJson(new CustomMessage(204, "cliente removido"));
+            request.getSession().setAttribute(CLIENTES_SESSION, clienteService.listAll());
+
+        }
+    }
+
+    private String erroMessage(HttpServletResponse response) {
+
+        response.setStatus(400);
+        return gson.toJson(new CustomMessage(400,"identificador não informado"));
+
     }
 }
