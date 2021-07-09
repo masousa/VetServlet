@@ -2,10 +2,13 @@ package br.com.letscode.dao;
 
 import br.com.letscode.dominio.Cliente;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resources;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -15,17 +18,17 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ClienteDaoImpl implements ClienteDao{
-    private String caminho = "/home/matheus/Documentos/clientes.csv";
+    private String caminho = "/arquivosLogicos"+ File.separator+"clientes.csv";
 
     private Path path;
     @PostConstruct
     public void init(){
         try {
-            path = Paths.get(caminho);
+            path = Paths.get(getClass().getResource(caminho).toURI());
             if (!path.toFile().exists()) {
                 Files.createFile(path);
             }
-        }catch (IOException ioException){
+        }catch (IOException | URISyntaxException ioException){
             ioException.printStackTrace();
         }
     }
